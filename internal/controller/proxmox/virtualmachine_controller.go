@@ -75,6 +75,7 @@ type VirtualMachineReconciler struct {
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets;configmaps,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -291,6 +292,11 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 			logger.Error(err, "Error handling additional configuration")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
+		// Before auto start, so a VM whose create stopped at this step does not
+		// boot without its cloud-init data.
+		if err = r.handleCloudInitData(ctx, pc, vm); err != nil {
+			return ctrl.Result{}, err
+		}
 		// Check if auto start is enabled
 		var res ctrl.Result
 		res, err = r.handleAutoStart(ctx, pc, vm)
@@ -361,6 +367,9 @@ func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context,
 		logger.Error(err, "Error handling additional configuration")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	if err = r.handleCloudInitData(ctx, pc, vm); err != nil {
+		return dontRequeue, err
+	}
 	return r.startCreatedVM(ctx, pc, vm, nodeName)
 }
 
@@ -386,6 +395,9 @@ func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, 
 	r.Recorder.Eventf(vm, nil, "Normal", "Created", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
 	err = r.handleCloudInitOperations(ctx, pc, vm)
 	if err != nil {
+		return dontRequeue, err
+	}
+	if err = r.handleCloudInitData(ctx, pc, vm); err != nil {
 		return dontRequeue, err
 	}
 
@@ -422,7 +434,23 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context,
 		logger.Info(fmt.Sprintf("VirtualMachine %s is protected from deletion", vm.Spec.Name))
 		return ctrl.Result{}, nil
 	} else {
+		// List the cloud-init ISOs while the VM ID still resolves.
+		var ciISOs []string
+		if data := vm.Spec.CloudInitData; data != nil {
+			var listErr error
+			ciISOs, listErr = pc.CloudInitISOs(ctx, vm.Spec.Name, vm.Spec.NodeName, data.Storage)
+			if listErr != nil {
+				logger.Error(listErr, "Failed to list cloud-init ISOs; they will be left on storage")
+			}
+		}
 		err := pc.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
+		if err == nil && len(ciISOs) > 0 {
+			// The VM is gone, so a leftover ISO must not block finalizer removal.
+			if delErr := pc.DeleteCloudInitISOs(ctx, vm.Spec.NodeName, vm.Spec.CloudInitData.Storage, ciISOs); delErr != nil {
+				r.Recorder.Eventf(vm, nil, "Warning", "CloudInitData", "Delete",
+					fmt.Sprintf("Failed to delete cloud-init ISOs of %s: %s", vm.Spec.Name, delErr))
+			}
+		}
 		var notFoundErr *proxmox.NotFoundError
 		if errors.As(err, &notFoundErr) {
 			logger.Info("VirtualMachine not found, proceeding with finalizer removal")
@@ -631,6 +659,40 @@ func (r *VirtualMachineReconciler) handleCloudInitOperations(ctx context.Context
 		}
 	}
 
+	return nil
+}
+
+// handleCloudInitData attaches the VM's cloud-init ISO built from
+// spec.cloudInitData. A changed ISO is swapped without a reboot: cloud-init only
+// reads it when the VM is next provisioned.
+func (r *VirtualMachineReconciler) handleCloudInitData(ctx context.Context,
+	pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) error {
+	data := vm.Spec.CloudInitData
+	if data == nil {
+		return nil
+	}
+	logger := log.FromContext(ctx)
+	files, err := proxmox.ResolveCloudInitData(ctx, r.Client, vm)
+	if err != nil {
+		var missing *kubernetes.MissingReferenceError
+		if errors.As(err, &missing) {
+			r.Recorder.Eventf(vm, nil, "Warning", "CloudInitData", "Resolve",
+				fmt.Sprintf("VirtualMachine %s is waiting for %s", vm.Spec.Name, err))
+		}
+		logger.Error(err, "Failed to resolve cloud-init data")
+		return err
+	}
+	replaced, err := pc.EnsureCloudInitISO(ctx, vm.Spec.Name, vm.Spec.NodeName, data, files)
+	if err != nil {
+		r.Recorder.Eventf(vm, nil, "Warning", "CloudInitData", "Attach",
+			fmt.Sprintf("Failed to attach cloud-init ISO to %s: %s", vm.Spec.Name, err))
+		logger.Error(err, "Failed to attach cloud-init ISO")
+		return err
+	}
+	if replaced != "" {
+		r.Recorder.Eventf(vm, nil, "Normal", "CloudInitData", "Replace",
+			fmt.Sprintf("Cloud-init ISO %s replaced; it applies when %s is next provisioned", replaced, vm.Spec.Name))
+	}
 	return nil
 }
 

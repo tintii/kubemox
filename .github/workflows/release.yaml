@@ -10,6 +10,7 @@ on:
 
 jobs:
   release:
+    if: github.repository_owner == 'alperencelik'
     permissions:
       packages: write
       contents: write

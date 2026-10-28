@@ -9,6 +9,7 @@ require (
 	github.com/alperencelik/kube-external-watcher v0.1.0
 	github.com/carolynvs/magex v0.9.0
 	github.com/cert-manager/cert-manager v1.18.2
+	github.com/diskfs/go-diskfs v1.9.2
 	github.com/google/go-cmp v0.7.0
 	github.com/luthermonson/go-proxmox v0.5.0
 	github.com/magefile/mage v1.15.0
@@ -37,7 +38,6 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/diskfs/go-diskfs v1.9.2 // indirect
 	github.com/djherbis/times v1.6.0 // indirect
 	github.com/dsnet/compress v0.0.2-0.20210315054119-f66993602bf5 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect

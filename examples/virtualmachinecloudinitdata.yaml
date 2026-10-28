@@ -1,0 +1,55 @@
+# This manifest is used to create a Virtual Machine from a template with
+# cloud-init data read from a Secret and a ConfigMap in the VM's namespace.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: k3s-agent-cloudinit
+stringData:
+  user-data: |
+    #cloud-config
+    write_files:
+      - path: /etc/rancher/k3s/config.yaml
+        content: |
+          server: https://10.0.0.11:6443
+          token: CHANGEME
+    runcmd:
+      - curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC=agent sh -
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: node-prep
+data:
+  vendor-data: |
+    #cloud-config
+    runcmd:
+      - swapoff -a
+---
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachine
+metadata:
+  name: k3s-agent-0
+spec:
+  name: k3s-agent-0
+  nodeName: lowtower
+  connectionRef:
+    name: proxmoxconnection-sample
+  template:
+    # The template's image needs cloud-init with the NoCloud datasource
+    name: fedora-template
+    cores: 2
+    socket: 1
+    memory: 4096
+  cloudInitData:
+    userData:
+      secretKeyRef:
+        name: k3s-agent-cloudinit
+        key: user-data
+    vendorData:
+      configMapKeyRef:
+        name: node-prep
+        key: vendor-data
+    # Optional: storage for the ISO (default: first iso-capable storage on the node)
+    # storage: local
+    # Optional: CD-ROM device (default: ide3)
+    # device: ide3

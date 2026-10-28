@@ -9,6 +9,7 @@ on:
 
 jobs:
   update-chart:
+    if: github.repository_owner == 'alperencelik'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Kubemox Repo

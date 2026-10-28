@@ -67,9 +67,54 @@ type VirtualMachineSpec struct {
 	// +kubebuilder:validation:Enum=Full;Linked
 	// +kubebuilder:default:=Full
 	CloneMode CloneMode `json:"cloneMode,omitempty"`
+	// CloudInitData delivers cloud-init user, vendor, meta and network data from
+	// Secrets or ConfigMaps in the VirtualMachine's namespace. The operator
+	// renders it into a NoCloud ISO, uploads it through the Proxmox API and
+	// attaches it before the VM first starts. Setting it removes any
+	// Proxmox-generated cloud-init drive from the VM.
+	// +optional
+	CloudInitData *CloudInitData `json:"cloudInitData,omitempty"`
 
 	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
+}
+
+// CloudInitData references the documents of a NoCloud cloud-init datasource.
+type CloudInitData struct {
+	// UserData is the cloud-init user-data document.
+	// +kubebuilder:validation:Required
+	UserData CloudInitDataSource `json:"userData"`
+	// VendorData is the cloud-init vendor-data document.
+	// +optional
+	VendorData *CloudInitDataSource `json:"vendorData,omitempty"`
+	// MetaData is the cloud-init meta-data document. When unset, instance-id and
+	// local-hostname are both set to the VM name.
+	// +optional
+	MetaData *CloudInitDataSource `json:"metaData,omitempty"`
+	// NetworkConfig is the cloud-init network-config document.
+	// +optional
+	NetworkConfig *CloudInitDataSource `json:"networkConfig,omitempty"`
+	// Storage is the Proxmox storage the ISO is uploaded to. When unset, the
+	// first storage on the VM's node that accepts iso content is used.
+	// +optional
+	Storage string `json:"storage,omitempty"`
+	// Device is the VM config key the ISO is attached to as a CD-ROM.
+	// +kubebuilder:default:="ide3"
+	// +kubebuilder:validation:Pattern=`^(ide|sata|scsi)[0-9]+$`
+	Device string `json:"device,omitempty"`
+}
+
+// CloudInitDataSource selects a key of a Secret or a ConfigMap.
+// +kubebuilder:validation:XValidation:rule="has(self.secretKeyRef) != has(self.configMapKeyRef)",message="Specify exactly one of secretKeyRef or configMapKeyRef"
+//
+//nolint:lll // CEL validation rules are too long
+type CloudInitDataSource struct {
+	// SecretKeyRef selects a key of a Secret in the VirtualMachine's namespace.
+	// +optional
+	SecretKeyRef *corev1.SecretKeySelector `json:"secretKeyRef,omitempty"`
+	// ConfigMapKeyRef selects a key of a ConfigMap in the VirtualMachine's namespace.
+	// +optional
+	ConfigMapKeyRef *corev1.ConfigMapKeySelector `json:"configMapKeyRef,omitempty"`
 }
 
 // CloneMode selects between a full copy of the template's disks and a linked

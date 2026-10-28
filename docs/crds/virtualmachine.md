@@ -172,3 +172,63 @@ spec:
       userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
 EOF
 ```
+
+## Cloud-init data from Secrets and ConfigMaps
+
+`spec.cloudInitData` delivers per-VM cloud-init documents held in Kubernetes,
+for both template clones and VMs created from scratch. Each of `userData`
+(required), `vendorData`, `metaData` and `networkConfig` references one key of
+a Secret (`secretKeyRef`) or a ConfigMap (`configMapKeyRef`) in the
+VirtualMachine's own namespace.
+
+The operator renders the documents into a NoCloud ISO (volume label `cidata`),
+uploads it through the Proxmox API as `iso` content and attaches it as a CD-ROM
+on `device` (default `ide3`) before the VM first starts. No snippet storage or
+SSH access to the Proxmox host is needed.
+
+- When `metaData` is unset, `instance-id` and `local-hostname` are the VM name.
+- Any Proxmox-generated cloud-init drive is removed, so the guest sees one
+  `cidata` volume. Do not combine with `cloudInitConfig` or `cicustom`.
+- The ISO is named `kubemox-ci-<vmid>-<hash>.iso`. When a referenced value
+  changes, the next reconcile attaches a new ISO and deletes the old one. The
+  VM is not rebooted, and cloud-init only reads the new data when the VM is
+  next provisioned.
+- Deleting the VirtualMachine deletes its ISOs, unless deletion protection
+  keeps the VM.
+- If a referenced object or key is missing, the VM is not started and a
+  Warning event names the reference.
+
+Requirements:
+
+- The image needs cloud-init with the NoCloud datasource.
+- The Proxmox API token needs `Datastore.AllocateSpace` and `Datastore.Audit`
+  on the ISO storage.
+
+The rendered documents, Secret values included, are stored as an ISO on that
+storage and are readable by anyone with access to it. Use a dedicated
+`storage` with restricted permissions for secrets.
+
+```yaml
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachine
+metadata:
+  name: k3s-agent-0
+spec:
+  name: k3s-agent-0
+  nodeName: lowtower
+  connectionRef:
+    name: proxmoxconnection-sample
+  template:
+    name: fedora-template
+  cloudInitData:
+    userData:
+      secretKeyRef:
+        name: k3s-agent-cloudinit
+        key: user-data
+    vendorData:
+      configMapKeyRef:
+        name: node-prep
+        key: vendor-data
+```
+
+See `examples/virtualmachinecloudinitdata.yaml` for the Secret and ConfigMap.
