@@ -2,11 +2,11 @@
 
 `VirtualMachineTemplate` is a Kubernetes Custom Resource Definition (CRD) that defines a template for a VirtualMachine. It is used to create a VirtualMachine object and then converts that into a template for future use. It utilizes the 'CloudInit' behind the scenes to configure the VirtualMachine. `VirtualMachineTemplate` has three main specs that you can define:
 
-- `cloudInitConfig`: This struct includes cloud-init configuration that will be used to configure the VirtualMachine. This field is mandatory to create a VirtualMachineTemplate.
+- `cloudInitConfig`: This struct includes cloud-init configuration that will be used to configure the VirtualMachine. It is optional: without it the template gets no Proxmox cloud-init drive, which suits clones that set `spec.cloudInitData`.
 
 - `imageConfig`: This struct includes the image configuration that will be used to create the VirtualMachine from the template. You should use cloud-init compatible images within this field.
 
-- `virtualMachineConfig`: This struct includes the VirtualMachine configuration that will be used to create the VirtualMachine from the template. You can define the VirtualMachine configuration like cores, memory, disk, network, etc. within this field. This is non-mandatory struct and default values will be used if not defined.
+- `virtualMachineConfig`: This struct includes the VirtualMachine configuration that will be used to create the VirtualMachine from the template. You can define the VirtualMachine configuration like cores, memory, disk, network, etc. within this field. This is non-mandatory struct and default values will be used if not defined. `diskSize` (GiB) grows the imported `scsi0` before conversion, so clones start at that size; it never shrinks the disk.
 
 
 ## Creating VirtualMachineTemplate
@@ -44,4 +44,46 @@ spec:
       bridge: vmbr0
       model: virtio
     sockets: 1
+```
+
+## Importing with a non-root API token
+
+Proxmox only lets `root@pam` import a disk from a filesystem path, which is
+what `imageConfig.content: iso` uses. With `content: import`, the image is
+downloaded as Proxmox `import` content (`.qcow2`, `.raw`, `.vmdk`, …) and the
+disk is imported by volume ID (`<storage>:import/<filename>`), which a
+privilege-separated token may do. The token then needs
+`Datastore.AllocateTemplate` and `Datastore.AllocateSpace` on the image
+storage, plus the usual VM privileges. The storage must allow `import`
+content.
+
+`additionalConfig` is applied right after the VM is created, before the disk
+is imported, so it can set options the typed fields lack, such as a VLAN tag.
+
+```yaml
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineTemplate
+metadata:
+  name: fedora44-k3s
+spec:
+  connectionRef:
+    name: proxmox-connection-sample
+  name: fedora44-k3s
+  node: pve0
+  imageConfig:
+    content: import
+    filename: Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2
+    node: pve0
+    storage: local
+    url: https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2
+  virtualMachineConfig:
+    cores: 4
+    memory: 8192
+    diskSize: 40
+    network:
+      model: virtio
+      bridge: vmbr0
+  additionalConfig:
+    net0: virtio,bridge=vmbr0,tag=116
+    agent: enabled=1
 ```

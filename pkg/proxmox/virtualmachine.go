@@ -1489,18 +1489,24 @@ func (pc *ProxmoxClient) RebootVM(vmName, nodeName string) error {
 	return nil
 }
 
+// additionalConfigTarget returns the Proxmox VM name, node and additional
+// configuration of a VirtualMachine or VirtualMachineTemplate. It switches on
+// the Go type: TypeMeta is often empty on objects read through the client.
+func additionalConfigTarget(vm Resource) (vmName, nodeName string, additionalConfig map[string]string, err error) {
+	switch obj := vm.(type) {
+	case *proxmoxv1alpha1.VirtualMachine:
+		return obj.Spec.Name, obj.Spec.NodeName, obj.Spec.AdditionalConfig, nil
+	case *proxmoxv1alpha1.VirtualMachineTemplate:
+		return obj.Spec.Name, obj.Spec.NodeName, obj.Spec.AdditionalConfig, nil
+	default:
+		return "", "", nil, fmt.Errorf("additionalConfig is not supported for %T", vm)
+	}
+}
+
 func (pc *ProxmoxClient) ApplyAdditionalConfiguration(vm Resource) error {
-	var vmName, nodeName string
-	var additionalConfig map[string]string
-	// vm could be either VirtualMachine or VirtualMachineTemplate
-	if vm.GetObjectKind().GroupVersionKind().Kind == "VirtualMachine" {
-		vmName = vm.(*proxmoxv1alpha1.VirtualMachine).Spec.Name
-		nodeName = vm.(*proxmoxv1alpha1.VirtualMachine).Spec.NodeName
-		additionalConfig = vm.(*proxmoxv1alpha1.VirtualMachine).Spec.AdditionalConfig
-	} else if vm.GetObjectKind().GroupVersionKind().Kind == "VirtualMachineTemplate" {
-		vmName = vm.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.Name
-		nodeName = vm.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.NodeName
-		additionalConfig = vm.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.AdditionalConfig
+	vmName, nodeName, additionalConfig, err := additionalConfigTarget(vm)
+	if err != nil {
+		return err
 	}
 
 	// Get VirtualMachine
@@ -1518,6 +1524,7 @@ func (pc *ProxmoxClient) ApplyAdditionalConfiguration(vm Resource) error {
 		})
 		if err != nil {
 			log.Log.Error(err, "Error applying additional configuration")
+			return err
 		}
 		taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
 		if !taskStatus {

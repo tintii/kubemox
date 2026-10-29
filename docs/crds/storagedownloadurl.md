@@ -1,6 +1,6 @@
 # StorageDownloadURL
 
-`StorageDownloadURL` is a custom resource that represents a download URL for a file in a storage account. You can download "iso" or "vztmpl" files from the internet and store them in a storage for Proxmox. 
+`StorageDownloadURL` is a custom resource that represents a download URL for a file in a storage account. You can download "iso", "vztmpl" or "import" (disk images such as `.qcow2`) files from the internet and store them in a storage for Proxmox. 
 
 
 ## Creating StorageDownloadURL

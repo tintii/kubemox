@@ -197,7 +197,7 @@ spec:
                   compression:
                     type: string
                   content:
-                    pattern: \b(iso|vztmpl)\b
+                    pattern: \b(iso|vztmpl|import)\b
                     type: string
                   filename:
                     type: string
@@ -228,6 +228,12 @@ spec:
                   cores:
                     default: 2
                     description: Cores
+                    minimum: 1
+                    type: integer
+                  diskSize:
+                    description: |-
+                      DiskSize grows the imported scsi0 to this many GiB before the VM is
+                      converted to a template, so clones start at this size. It never shrinks.
                     minimum: 1
                     type: integer
                   memory:

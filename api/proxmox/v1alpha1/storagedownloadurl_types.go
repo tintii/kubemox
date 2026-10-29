@@ -38,7 +38,7 @@ type StorageDownloadURLSpec struct {
 }
 
 type StorageDownloadURLContent struct {
-	// +kubebuilder:validation:Pattern=\b(iso|vztmpl)\b
+	// +kubebuilder:validation:Pattern=\b(iso|vztmpl|import)\b
 	Content  string `json:"content"`
 	Filename string `json:"filename"`
 	Node     string `json:"node"`

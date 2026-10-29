@@ -1,0 +1,30 @@
+# Template built from a cloud disk image with a non-root API token: the image
+# is downloaded as Proxmox "import" content and imported by volume ID. No
+# cloudInitConfig: clones bring their own data via spec.cloudInitData.
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineTemplate
+metadata:
+  name: fedora44-k3s
+spec:
+  connectionRef:
+    name: proxmoxconnection-sample
+  name: fedora44-k3s
+  node: lowtower
+  imageConfig:
+    content: import
+    filename: Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2
+    node: lowtower
+    storage: local
+    url: https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2
+  virtualMachineConfig:
+    cores: 2
+    memory: 2048
+    # Clones start with a 40 GiB disk.
+    diskSize: 40
+    network:
+      model: virtio
+      bridge: vmbr0
+  additionalConfig:
+    # Typed network fields have no VLAN tag.
+    net0: virtio,bridge=vmbr0,tag=116
+    agent: enabled=1

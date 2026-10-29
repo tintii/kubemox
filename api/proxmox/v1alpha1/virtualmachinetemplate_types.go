@@ -72,6 +72,11 @@ type VirtualMachineConfig struct {
 	// +kubebuilder:default:="local-lvm"
 	// +kubebuilder:validation:Optional
 	Storage *string `json:"storage,omitempty"`
+	// DiskSize grows the imported scsi0 to this many GiB before the VM is
+	// converted to a template, so clones start at this size. It never shrinks.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Optional
+	DiskSize int `json:"diskSize,omitempty"`
 }
 
 type VMTemplateNetwork struct {

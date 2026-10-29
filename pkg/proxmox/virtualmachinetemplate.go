@@ -125,7 +125,18 @@ func (pc *ProxmoxClient) SetCloudInitConfig(vmName, nodeName string, ciConfig *p
 	return nil
 }
 
-func (pc *ProxmoxClient) ImportDiskToVM(vmName, nodeName, diskName, storageName string) error {
+// templateImportSource returns the import-from value for a downloaded image.
+// Proxmox lets non-root tokens import "import" content by volume ID; "iso"
+// content can only be imported by filesystem path, which is root-only.
+func templateImportSource(image proxmoxv1alpha1.StorageDownloadURLContent, storagePath string) string {
+	if image.Content == "import" {
+		return fmt.Sprintf("%s:import/%s", image.Storage, image.Filename)
+	}
+	return storagePath + "/template/iso/" + image.Filename
+}
+
+func (pc *ProxmoxClient) ImportDiskToVM(vmName, nodeName string,
+	image proxmoxv1alpha1.StorageDownloadURLContent, storageName string) error {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for importing disk")
@@ -136,12 +147,16 @@ func (pc *ProxmoxClient) ImportDiskToVM(vmName, nodeName, diskName, storageName 
 	if scsi0 != "" {
 		return nil
 	}
-	localStorage, err := pc.GetStorage(ctx, "local")
-	if err != nil {
-		log.Log.Error(err, "Error getting local storage")
-		return err
+	var storagePath string
+	if image.Content != "import" {
+		imageStorage, serr := pc.GetStorage(ctx, image.Storage)
+		if serr != nil {
+			log.Log.Error(serr, "Error getting image storage")
+			return serr
+		}
+		storagePath = imageStorage.Path
 	}
-	diskLocation := localStorage.Path + "/template/iso/" + diskName
+	diskLocation := templateImportSource(image, storagePath)
 
 	// Import disk
 	// TODO: SCSI0  should be retrieved from external resource
@@ -156,6 +171,44 @@ func (pc *ProxmoxClient) ImportDiskToVM(vmName, nodeName, diskName, storageName 
 	taskStatus, taskCompleted, taskWaitErr := task.WaitForCompleteStatus(ctx, 10, 10)
 	if !taskStatus {
 		// Return the task.ExitStatus as an error
+		return &TaskError{ExitStatus: task.ExitStatus}
+	}
+	if !taskCompleted {
+		return taskWaitErr
+	}
+	return nil
+}
+
+// templateDiskNeedsResize reports whether scsi0 must grow to sizeGiB. Proxmox
+// cannot shrink disks, and an unparsable size is left alone.
+func templateDiskNeedsResize(scsi0 string, sizeGiB int) bool {
+	if sizeGiB == 0 || scsi0 == "" {
+		return false
+	}
+	disks, err := parseDiskConfiguration(map[string]string{"scsi0": scsi0})
+	if err != nil || len(disks) != 1 {
+		log.Log.Info("Cannot parse template disk size, skipping resize", "scsi0", scsi0)
+		return false
+	}
+	return disks[0].Size < sizeGiB
+}
+
+// ResizeTemplateDisk grows scsi0 to sizeGiB before the VM becomes a template.
+func (pc *ProxmoxClient) ResizeTemplateDisk(vmName, nodeName string, sizeGiB int) error {
+	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		return err
+	}
+	if bool(VirtualMachine.Template) ||
+		!templateDiskNeedsResize(VirtualMachine.VirtualMachineConfig.SCSI0, sizeGiB) {
+		return nil
+	}
+	task, err := VirtualMachine.ResizeDisk(ctx, "scsi0", fmt.Sprintf("%dG", sizeGiB))
+	if err != nil {
+		return err
+	}
+	taskStatus, taskCompleted, taskWaitErr := task.WaitForCompleteStatus(ctx, 10, 10)
+	if !taskStatus {
 		return &TaskError{ExitStatus: task.ExitStatus}
 	}
 	if !taskCompleted {

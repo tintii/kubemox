@@ -149,8 +149,8 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	// Do the CloudInit operations
-	err = r.handleCloudInitOperations(ctx, pc, vmTemplate)
+	// Import the disk, size it and convert the VM to a template
+	err = r.handleTemplateBuild(ctx, pc, vmTemplate)
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -339,7 +339,7 @@ func (r *VirtualMachineTemplateReconciler) createStorageDownloadURLCR(ctx contex
 		},
 		Spec: proxmoxv1alpha1.StorageDownloadURLSpec{
 			StorageDownloadURLContent: proxmoxv1alpha1.StorageDownloadURLContent{
-				Content:  "iso",
+				Content:  vmTemplate.Spec.ImageConfig.Content,
 				Filename: vmTemplate.Spec.ImageConfig.Filename,
 				Node:     vmTemplate.Spec.ImageConfig.Node,
 				Storage:  vmTemplate.Spec.ImageConfig.Storage,
@@ -359,13 +359,12 @@ func (r *VirtualMachineTemplateReconciler) createStorageDownloadURLCR(ctx contex
 	return nil
 }
 
-func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context.Context,
+// handleTemplateBuild imports the image disk, grows it to diskSize, applies
+// cloud-init settings when cloudInitConfig is set, and converts the VM to a
+// template. Each step is skipped when already done.
+func (r *VirtualMachineTemplateReconciler) handleTemplateBuild(ctx context.Context,
 	pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
 	logger := log.FromContext(ctx)
-	// Check if cloud-init config is provided
-	if vmTemplate.Spec.CloudInitConfig == nil {
-		return nil
-	}
 	templateVMName := vmTemplate.Spec.Name
 	nodeName := vmTemplate.Spec.NodeName
 	storageDownloadURL := &proxmoxv1alpha1.StorageDownloadURL{}
@@ -377,9 +376,9 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 			return err
 		}
 	}
-	// Continue with the VM template operations
 	// 1. Import Disk
-	err = pc.ImportDiskToVM(templateVMName, nodeName, storageDownloadURL.Spec.Filename, *vmTemplate.Spec.VirtualMachineConfig.Storage)
+	err = pc.ImportDiskToVM(templateVMName, nodeName, storageDownloadURL.Spec.StorageDownloadURLContent,
+		*vmTemplate.Spec.VirtualMachineConfig.Storage)
 	if err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
@@ -389,30 +388,40 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 		logger.Error(err, "Failed to import disk to VM")
 		return err
 	}
-	// 2. Add cloud Init CD-ROM drive
-	err = pc.AddCloudInitDrive(templateVMName, nodeName)
+	// 2. Grow the imported disk so clones start at the requested size
+	err = pc.ResizeTemplateDisk(templateVMName, nodeName, vmTemplate.Spec.VirtualMachineConfig.DiskSize)
 	if err != nil {
-		var taskErr *proxmox.TaskError
-		if errors.As(err, &taskErr) {
-			r.Recorder.Eventf(vmTemplate, nil, "Warning", "VMTemplateAddCloudInitDriveFailed", "VMTemplateAddCloudInitDriveFailed",
-				fmt.Sprintf("VirtualMachine template %s cloud init drive addition failed: %s", templateVMName, err))
+		r.Recorder.Eventf(vmTemplate, nil, "Warning", "VMTemplateResizeDiskFailed", "VMTemplateResizeDiskFailed",
+			fmt.Sprintf("VirtualMachine template %s disk resize failed: %s", templateVMName, err))
+		logger.Error(err, "Failed to resize template disk")
+		return err
+	}
+	if vmTemplate.Spec.CloudInitConfig != nil {
+		// 3. Add cloud Init CD-ROM drive
+		err = pc.AddCloudInitDrive(templateVMName, nodeName)
+		if err != nil {
+			var taskErr *proxmox.TaskError
+			if errors.As(err, &taskErr) {
+				r.Recorder.Eventf(vmTemplate, nil, "Warning", "VMTemplateAddCloudInitDriveFailed", "VMTemplateAddCloudInitDriveFailed",
+					fmt.Sprintf("VirtualMachine template %s cloud init drive addition failed: %s", templateVMName, err))
+			}
+			logger.Error(err, "Failed to add cloud-init drive to VM")
+			return err
 		}
-		logger.Error(err, "Failed to add cloud-init drive to VM")
-		return err
+		// 4. Set cloud-init configuration
+		err = pc.SetCloudInitConfig(templateVMName, nodeName, vmTemplate.Spec.CloudInitConfig)
+		if err != nil {
+			logger.Error(err, "Failed to set cloud-init configuration")
+			return err
+		}
 	}
-	// 3. Set cloud-init configuration
-	err = pc.SetCloudInitConfig(templateVMName, nodeName, vmTemplate.Spec.CloudInitConfig)
-	if err != nil {
-		logger.Error(err, "Failed to set cloud-init configuration")
-		return err
-	}
-	// 4. Set boot order to boot from imported disk
+	// 5. Set boot order to boot from imported disk
 	err = pc.SetBootOrder(templateVMName, nodeName)
 	if err != nil {
 		logger.Error(err, "Failed to set boot order")
 		return err
 	}
-	// 5. Convert VM to template
+	// 6. Convert VM to template
 	err = pc.ConvertVMToTemplate(templateVMName, nodeName)
 	if err != nil {
 		logger.Error(err, "Failed to convert VM to template")
