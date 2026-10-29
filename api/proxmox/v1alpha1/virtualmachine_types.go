@@ -68,7 +68,7 @@ type VirtualMachineSpec struct {
 	// +kubebuilder:default:=Full
 	CloneMode CloneMode `json:"cloneMode,omitempty"`
 	// CloudInitData delivers cloud-init user, vendor, meta and network data from
-	// Secrets or ConfigMaps in the VirtualMachine's namespace. The operator
+	// Secrets or ConfigMaps in the operator's namespace. The operator
 	// renders it into a NoCloud ISO, uploads it through the Proxmox API and
 	// attaches it before the VM first starts. Setting it removes any
 	// Proxmox-generated cloud-init drive from the VM.
@@ -109,10 +109,10 @@ type CloudInitData struct {
 //
 //nolint:lll // CEL validation rules are too long
 type CloudInitDataSource struct {
-	// SecretKeyRef selects a key of a Secret in the VirtualMachine's namespace.
+	// SecretKeyRef selects a key of a Secret in the operator's namespace.
 	// +optional
 	SecretKeyRef *corev1.SecretKeySelector `json:"secretKeyRef,omitempty"`
-	// ConfigMapKeyRef selects a key of a ConfigMap in the VirtualMachine's namespace.
+	// ConfigMapKeyRef selects a key of a ConfigMap in the operator's namespace.
 	// +optional
 	ConfigMapKeyRef *corev1.ConfigMapKeySelector `json:"configMapKeyRef,omitempty"`
 }

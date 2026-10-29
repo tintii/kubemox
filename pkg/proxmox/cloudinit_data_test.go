@@ -31,7 +31,7 @@ const (
 
 func cloudInitVM(data *proxmoxv1alpha1.CloudInitData) *proxmoxv1alpha1.VirtualMachine {
 	return &proxmoxv1alpha1.VirtualMachine{
-		ObjectMeta: metav1.ObjectMeta{Name: ciVMName, Namespace: ciNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: ciVMName}, // cluster-scoped
 		Spec:       proxmoxv1alpha1.VirtualMachineSpec{Name: ciVMName, CloudInitData: data},
 	}
 }
@@ -64,7 +64,7 @@ func TestResolveCloudInitData(t *testing.T) {
 		VendorData: configMapRef(ciConfigMap, "vendor-data"),
 	})
 
-	files, err := ResolveCloudInitData(context.Background(), c, vm)
+	files, err := ResolveCloudInitData(context.Background(), c, ciNamespace, vm)
 	if err != nil {
 		t.Fatalf("ResolveCloudInitData: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestResolveCloudInitDataExplicitMetaData(t *testing.T) {
 		MetaData: configMapRef(ciConfigMap, "meta-data"),
 	})
 
-	files, err := ResolveCloudInitData(context.Background(), c, vm)
+	files, err := ResolveCloudInitData(context.Background(), c, ciNamespace, vm)
 	if err != nil {
 		t.Fatalf("ResolveCloudInitData: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestResolveCloudInitDataMissing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := credentialsClient(t, secret.DeepCopy(), cm.DeepCopy())
-			_, err := ResolveCloudInitData(context.Background(), c, cloudInitVM(tt.data))
+			_, err := ResolveCloudInitData(context.Background(), c, ciNamespace, cloudInitVM(tt.data))
 			var missing *kubernetes.MissingReferenceError
 			if !errors.As(err, &missing) {
 				t.Fatalf("err = %v, want MissingReferenceError", err)
@@ -141,7 +141,7 @@ func TestResolveCloudInitDataOptionalMissing(t *testing.T) {
 	c := credentialsClient(t, secret)
 	vm := cloudInitVM(&proxmoxv1alpha1.CloudInitData{UserData: secretRef(ciSecret, "user-data"), VendorData: vendor})
 
-	files, err := ResolveCloudInitData(context.Background(), c, vm)
+	files, err := ResolveCloudInitData(context.Background(), c, ciNamespace, vm)
 	if err != nil {
 		t.Fatalf("ResolveCloudInitData: %v", err)
 	}

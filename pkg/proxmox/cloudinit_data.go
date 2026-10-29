@@ -37,10 +37,11 @@ const (
 )
 
 // ResolveCloudInitData reads the documents referenced by vm.Spec.CloudInitData
-// from the VirtualMachine's namespace and returns them keyed by NoCloud file
-// name. Unreferenced optional documents are omitted, except meta-data, which
-// defaults to the VM name as instance-id and local-hostname.
-func ResolveCloudInitData(ctx context.Context, r client.Reader,
+// from namespace and returns them keyed by NoCloud file name. VirtualMachine
+// is cluster-scoped, so the caller passes the operator's namespace.
+// Unreferenced optional documents are omitted, except meta-data, which defaults
+// to the VM name as instance-id and local-hostname.
+func ResolveCloudInitData(ctx context.Context, r client.Reader, namespace string,
 	vm *proxmoxv1alpha1.VirtualMachine) (map[string]string, error) {
 	data := vm.Spec.CloudInitData
 	if data == nil {
@@ -57,7 +58,7 @@ func ResolveCloudInitData(ctx context.Context, r client.Reader,
 		if src == nil {
 			continue
 		}
-		value, err := resolveCloudInitSource(ctx, r, vm.Namespace, src)
+		value, err := resolveCloudInitSource(ctx, r, namespace, src)
 		if err != nil {
 			return nil, fmt.Errorf("cloud-init %s: %w", name, err)
 		}

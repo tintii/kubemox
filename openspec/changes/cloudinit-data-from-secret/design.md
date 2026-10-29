@@ -57,10 +57,9 @@ Each data key is a struct with optional `secretKeyRef`/`configMapKeyRef`
 (`corev1.SecretKeySelector`/`ConfigMapKeySelector`) and a CEL rule requiring
 exactly one.
 
-**2. References resolve in the VirtualMachine's namespace.** That is standard
-Kubernetes semantics and lets workloads keep their data next to their VM.
-The existing `passwordFrom` reads from `POD_NAMESPACE`; this field
-deliberately does not. The ClusterRole already grants Secret `get`;
+**2. References resolve in the operator's namespace (`POD_NAMESPACE`).**
+VirtualMachine is cluster-scoped, so it has no namespace of its own. This
+matches `passwordFrom` and keeps the readable Secrets to one namespace. The ClusterRole already grants Secret `get`;
 ConfigMap `get` is added via a kubebuilder RBAC marker.
 
 **3. Own small ISO builder in `pkg/proxmox`, reusing go-diskfs.** The

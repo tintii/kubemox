@@ -13,8 +13,8 @@ cloud-init data uploaded through the API from a Kubernetes source.
 - New optional `spec.cloudInitData` on `VirtualMachine`, applying to both
   template clones and VMs created from scratch.
 - `userData`, `vendorData`, `metaData` and `networkConfig` each reference a key
-  in a Secret (`secretKeyRef`) or ConfigMap (`configMapKeyRef`) in the VM's
-  namespace. `userData` is required; `metaData` defaults to a generated
+  in a Secret (`secretKeyRef`) or ConfigMap (`configMapKeyRef`) in the
+  operator's namespace (VirtualMachine is cluster-scoped). `userData` is required; `metaData` defaults to a generated
   `instance-id` and `local-hostname`.
 - The operator renders the data into a NoCloud ISO (volume label `cidata`),
   uploads it as `iso` content through the Proxmox API, and attaches it as a

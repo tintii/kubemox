@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"time"
 
@@ -672,7 +673,7 @@ func (r *VirtualMachineReconciler) handleCloudInitData(ctx context.Context,
 		return nil
 	}
 	logger := log.FromContext(ctx)
-	files, err := proxmox.ResolveCloudInitData(ctx, r.Client, vm)
+	files, err := proxmox.ResolveCloudInitData(ctx, r.Client, os.Getenv("POD_NAMESPACE"), vm)
 	if err != nil {
 		var missing *kubernetes.MissingReferenceError
 		if errors.As(err, &missing) {

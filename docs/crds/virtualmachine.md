@@ -179,7 +179,8 @@ EOF
 for both template clones and VMs created from scratch. Each of `userData`
 (required), `vendorData`, `metaData` and `networkConfig` references one key of
 a Secret (`secretKeyRef`) or a ConfigMap (`configMapKeyRef`) in the
-VirtualMachine's own namespace.
+operator's namespace (`POD_NAMESPACE`, as for `passwordFrom`): VirtualMachine
+is cluster-scoped.
 
 The operator renders the documents into a NoCloud ISO (volume label `cidata`),
 uploads it through the Proxmox API as `iso` content and attaches it as a CD-ROM

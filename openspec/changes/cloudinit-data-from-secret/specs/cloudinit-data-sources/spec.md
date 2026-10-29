@@ -4,7 +4,7 @@
 A `VirtualMachine` SHALL accept an optional `spec.cloudInitData` with the keys
 `userData`, `vendorData`, `metaData` and `networkConfig`. Each key SHALL
 reference exactly one of `secretKeyRef` or `configMapKeyRef` (name and key) in
-the VirtualMachine's own namespace. `userData` SHALL be required when
+the operator's namespace (`POD_NAMESPACE`); VirtualMachine is cluster-scoped. `userData` SHALL be required when
 `cloudInitData` is set.
 
 #### Scenario: Secret-backed user data

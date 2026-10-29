@@ -94,7 +94,7 @@ spec:
               cloudInitData:
                 description: |-
                   CloudInitData delivers cloud-init user, vendor, meta and network data from
-                  Secrets or ConfigMaps in the VirtualMachine's namespace. The operator
+                  Secrets or ConfigMaps in the operator's namespace. The operator
                   renders it into a NoCloud ISO, uploads it through the Proxmox API and
                   attaches it before the VM first starts. Setting it removes any
                   Proxmox-generated cloud-init drive from the VM.
@@ -112,7 +112,7 @@ spec:
                     properties:
                       configMapKeyRef:
                         description: ConfigMapKeyRef selects a key of a ConfigMap
-                          in the VirtualMachine's namespace.
+                          in the operator's namespace.
                         properties:
                           key:
                             description: The key to select.
@@ -136,7 +136,7 @@ spec:
                         x-kubernetes-map-type: atomic
                       secretKeyRef:
                         description: SecretKeyRef selects a key of a Secret in the
-                          VirtualMachine's namespace.
+                          operator's namespace.
                         properties:
                           key:
                             description: The key of the secret to select from.  Must
@@ -168,7 +168,7 @@ spec:
                     properties:
                       configMapKeyRef:
                         description: ConfigMapKeyRef selects a key of a ConfigMap
-                          in the VirtualMachine's namespace.
+                          in the operator's namespace.
                         properties:
                           key:
                             description: The key to select.
@@ -192,7 +192,7 @@ spec:
                         x-kubernetes-map-type: atomic
                       secretKeyRef:
                         description: SecretKeyRef selects a key of a Secret in the
-                          VirtualMachine's namespace.
+                          operator's namespace.
                         properties:
                           key:
                             description: The key of the secret to select from.  Must
@@ -229,7 +229,7 @@ spec:
                     properties:
                       configMapKeyRef:
                         description: ConfigMapKeyRef selects a key of a ConfigMap
-                          in the VirtualMachine's namespace.
+                          in the operator's namespace.
                         properties:
                           key:
                             description: The key to select.
@@ -253,7 +253,7 @@ spec:
                         x-kubernetes-map-type: atomic
                       secretKeyRef:
                         description: SecretKeyRef selects a key of a Secret in the
-                          VirtualMachine's namespace.
+                          operator's namespace.
                         properties:
                           key:
                             description: The key of the secret to select from.  Must
@@ -285,7 +285,7 @@ spec:
                     properties:
                       configMapKeyRef:
                         description: ConfigMapKeyRef selects a key of a ConfigMap
-                          in the VirtualMachine's namespace.
+                          in the operator's namespace.
                         properties:
                           key:
                             description: The key to select.
@@ -309,7 +309,7 @@ spec:
                         x-kubernetes-map-type: atomic
                       secretKeyRef:
                         description: SecretKeyRef selects a key of a Secret in the
-                          VirtualMachine's namespace.
+                          operator's namespace.
                         properties:
                           key:
                             description: The key of the secret to select from.  Must
