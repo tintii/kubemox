@@ -202,11 +202,7 @@ func (pc *ProxmoxClient) EnsureCloudInitISO(ctx context.Context, vmName, nodeNam
 		return "", err
 	}
 	if !slices.Contains(ours, volid) {
-		task, uerr := storage.UploadWithName("iso", isoPath, name)
-		if uerr != nil {
-			return "", fmt.Errorf("uploading %s: %w", volid, uerr)
-		}
-		if err = task.WaitFor(ctx, ciTaskTimeout); err != nil {
+		if err = uploadCloudInitISO(ctx, storage, isoPath, name); err != nil {
 			return "", fmt.Errorf("uploading %s: %w", volid, err)
 		}
 	}
@@ -253,6 +249,22 @@ func (pc *ProxmoxClient) EnsureCloudInitISO(ctx context.Context, vmName, nodeNam
 		}
 	}
 	return replaced, nil
+}
+
+// uploadCloudInitISO uploads isoPath to storage as iso content named name.
+// Proxmox takes the stored name from the file part's filename, so the file is
+// renamed first: go-proxmox's UploadWithName adds a second "filename" form
+// field, and pveproxy rejects that field as the file upload.
+func uploadCloudInitISO(ctx context.Context, storage *proxmox.Storage, isoPath, name string) error {
+	namedPath := filepath.Join(filepath.Dir(isoPath), name)
+	if err := os.Rename(isoPath, namedPath); err != nil {
+		return err
+	}
+	task, err := storage.Upload("iso", namedPath)
+	if err != nil {
+		return err
+	}
+	return task.WaitFor(ctx, ciTaskTimeout)
 }
 
 // CloudInitISOs lists the cloud-init ISOs this operator uploaded for a VM. The
