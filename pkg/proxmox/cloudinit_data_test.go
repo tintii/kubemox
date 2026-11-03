@@ -247,3 +247,34 @@ func TestPVECloudInitVolume(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildNoCloudISOVolumeLabels reads the raw volume descriptors, as blkid
+// does: every descriptor must label the volume cidata. A Joliet descriptor
+// from go-diskfs carried "cidata" as ASCII in a UCS-2 field, which blkid
+// decoded as a garbled label, so cloud-init found no datasource.
+func TestBuildNoCloudISOVolumeLabels(t *testing.T) {
+	isoPath, _, err := BuildNoCloudISO(map[string]string{ciUserData: ciVendorValue})
+	if err != nil {
+		t.Fatalf("BuildNoCloudISO: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(isoPath)) })
+	raw, err := os.ReadFile(isoPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Volume descriptors start at sector 16 and end with type 255.
+	for sector := 16; (sector+1)*ciBlockSize <= len(raw); sector++ {
+		vd := raw[sector*ciBlockSize : (sector+1)*ciBlockSize]
+		if string(vd[1:6]) != "CD001" || vd[0] == 255 {
+			break
+		}
+		switch vd[0] {
+		case 1:
+			if label := strings.TrimRight(string(vd[40:72]), " \x00"); label != ciVolumeLabel {
+				t.Errorf("primary volume label = %q, want %q", label, ciVolumeLabel)
+			}
+		case 2:
+			t.Errorf("sector %d: supplementary (Joliet) descriptor present; blkid reads its label", sector)
+		}
+	}
+}

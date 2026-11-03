@@ -34,6 +34,8 @@ const (
 	// ciVolumeLabel is the volume label cloud-init's NoCloud datasource looks for.
 	ciVolumeLabel = "cidata"
 	ciBlockSize   = 2048
+	// ciISOLayout changes whenever the ISO layout changes; see BuildNoCloudISO.
+	ciISOLayout = "rockridge-v2"
 )
 
 // ResolveCloudInitData reads the documents referenced by vm.Spec.CloudInitData
@@ -127,6 +129,9 @@ func BuildNoCloudISO(files map[string]string) (isoPath, contentHash string, err 
 	}
 	sort.Strings(names)
 	hash := sha256.New()
+	// The ISO layout version is part of the name, so a layout fix replaces
+	// ISOs built by earlier versions instead of reusing them.
+	hash.Write([]byte(ciISOLayout + "\x00"))
 	for _, name := range names {
 		// Name and content are NUL-separated so different splits cannot collide.
 		hash.Write([]byte(name + "\x00" + files[name] + "\x00"))
@@ -144,8 +149,11 @@ func BuildNoCloudISO(files map[string]string) (isoPath, contentHash string, err 
 		}
 	}
 	if err = fs.Finalize(iso9660.FinalizeOptions{
+		// No Joliet: go-diskfs writes its volume label as ASCII where Joliet
+		// needs UCS-2, and blkid then reports a garbled label instead of
+		// cidata, so cloud-init finds no datasource. Proxmox's own cloud-init
+		// ISOs are Rock Ridge only too.
 		RockRidge:        true,
-		Joliet:           true,
 		VolumeIdentifier: ciVolumeLabel,
 	}); err != nil {
 		return "", "", err
