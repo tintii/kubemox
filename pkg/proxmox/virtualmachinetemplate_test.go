@@ -1,8 +1,15 @@
 package proxmox
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 
+	proxmox "github.com/luthermonson/go-proxmox"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
@@ -81,5 +88,94 @@ func TestAdditionalConfigTargetWithoutTypeMeta(t *testing.T) {
 	container := &proxmoxv1alpha1.Container{ObjectMeta: metav1.ObjectMeta{Name: "c"}}
 	if _, _, _, err := additionalConfigTarget(container); err == nil {
 		t.Error("Container: want an error")
+	}
+}
+
+// fakeTemplateVM serves the Proxmox API calls a template build makes for one
+// VM, and records the disk resizes it is asked for.
+type fakeTemplateVM struct {
+	mu      sync.Mutex
+	scsi0   string
+	resizes []string
+}
+
+func (f *fakeTemplateVM) setSCSI0(v string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.scsi0 = v
+}
+
+func (f *fakeTemplateVM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	const vm = "/api2/json/nodes/pve0/qemu/9000"
+	switch path := r.URL.Path; {
+	case path == "/api2/json/nodes/pve0/status":
+		_, _ = w.Write([]byte(`{"data":{}}`))
+	case path == "/api2/json/nodes/pve0/qemu":
+		_, _ = w.Write([]byte(`{"data":[{"vmid":9000,"name":"fedora44-k3s"}]}`))
+	case path == vm+"/status/current":
+		_, _ = w.Write([]byte(`{"data":{"vmid":9000,"name":"fedora44-k3s"}}`))
+	case path == vm+"/config":
+		_, _ = fmt.Fprintf(w, `{"data":{"scsi0":%q}}`, f.scsi0)
+	case path == vm+"/resize" && r.Method == http.MethodPut:
+		var body struct{ Disk, Size string }
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.resizes = append(f.resizes, body.Disk+"="+body.Size)
+		_, _ = w.Write([]byte(`{"data":"UPID:pve0:00000001:00000001:00000001:qmresize:9000:root@pam:"}`))
+	case strings.HasPrefix(path, "/api2/json/nodes/pve0/tasks/"):
+		_, _ = w.Write([]byte(`{"data":{"status":"stopped","exitstatus":"OK"}}`))
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func newFakeTemplateClient(t *testing.T, fake *fakeTemplateVM) *ProxmoxClient {
+	t.Helper()
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+	return &ProxmoxClient{
+		Client:     proxmox.NewClient(server.URL + "/api2/json"),
+		nodesCache: make(map[string]NodeCache),
+	}
+}
+
+// The VM is cached before the disk import, as ImportDiskToVM used to do. The
+// resize must still see the imported scsi0 and grow it.
+func TestResizeTemplateDiskIgnoresVMCachedBeforeImport(t *testing.T) {
+	fake := &fakeTemplateVM{}
+	pc := newFakeTemplateClient(t, fake)
+	if _, err := pc.getVirtualMachine("fedora44-k3s", "pve0"); err != nil {
+		t.Fatalf("caching VM: %v", err)
+	}
+	fake.setSCSI0("local-lvm:vm-9000-disk-0,size=5G")
+
+	if err := pc.ResizeTemplateDisk("fedora44-k3s", "pve0", 40); err != nil {
+		t.Fatalf("ResizeTemplateDisk: %v", err)
+	}
+	if want := []string{"scsi0=40G"}; fmt.Sprint(fake.resizes) != fmt.Sprint(want) {
+		t.Errorf("resizes = %v, want %v", fake.resizes, want)
+	}
+	cached, err := pc.getVirtualMachine("fedora44-k3s", "pve0")
+	if err != nil {
+		t.Fatalf("reading cached VM: %v", err)
+	}
+	if cached.VirtualMachineConfig.SCSI0 == "" {
+		t.Error("cache still holds the VM from before the import")
+	}
+}
+
+func TestResizeTemplateDiskFailsWithoutImportedDisk(t *testing.T) {
+	fake := &fakeTemplateVM{}
+	pc := newFakeTemplateClient(t, fake)
+	if err := pc.ResizeTemplateDisk("fedora44-k3s", "pve0", 40); err == nil {
+		t.Fatal("ResizeTemplateDisk succeeded with no scsi0")
+	}
+	if err := pc.ResizeTemplateDisk("fedora44-k3s", "pve0", 0); err != nil {
+		t.Errorf("ResizeTemplateDisk without diskSize: %v", err)
+	}
+	if len(fake.resizes) != 0 {
+		t.Errorf("resizes = %v, want none", fake.resizes)
 	}
 }

@@ -48,9 +48,10 @@ func (pc *ProxmoxClient) CheckVirtualMachineTemplateDelta(
 }
 
 func (pc *ProxmoxClient) ConvertVMToTemplate(vmName, nodeName string) error {
-	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
+	VirtualMachine, err := pc.getFreshVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for converting to template")
+		return err
 	}
 	// If the VM is not a template, convert it to a template
 	if !VirtualMachine.Template {
@@ -137,7 +138,7 @@ func templateImportSource(image proxmoxv1alpha1.StorageDownloadURLContent, stora
 
 func (pc *ProxmoxClient) ImportDiskToVM(vmName, nodeName string,
 	image proxmoxv1alpha1.StorageDownloadURLContent, storageName string) error {
-	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
+	VirtualMachine, err := pc.getFreshVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for importing disk")
 		return err
@@ -194,10 +195,14 @@ func templateDiskNeedsResize(scsi0 string, sizeGiB int) bool {
 }
 
 // ResizeTemplateDisk grows scsi0 to sizeGiB before the VM becomes a template.
+// It reads the VM fresh: a cached copy from before the import has no scsi0.
 func (pc *ProxmoxClient) ResizeTemplateDisk(vmName, nodeName string, sizeGiB int) error {
-	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
+	VirtualMachine, err := pc.getFreshVirtualMachine(vmName, nodeName)
 	if err != nil {
 		return err
+	}
+	if sizeGiB != 0 && VirtualMachine.VirtualMachineConfig.SCSI0 == "" {
+		return fmt.Errorf("cannot resize template %s: scsi0 is not set after the disk import", vmName)
 	}
 	if bool(VirtualMachine.Template) ||
 		!templateDiskNeedsResize(VirtualMachine.VirtualMachineConfig.SCSI0, sizeGiB) {
@@ -218,9 +223,10 @@ func (pc *ProxmoxClient) ResizeTemplateDisk(vmName, nodeName string, sizeGiB int
 }
 
 func (pc *ProxmoxClient) AddCloudInitDrive(vmName, nodeName string) error {
-	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
+	VirtualMachine, err := pc.getFreshVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for adding cloud-init drive")
+		return err
 	}
 	// Check if cloud-init drive is already added or not
 	cloudInitDrive := VirtualMachine.VirtualMachineConfig.IDE2

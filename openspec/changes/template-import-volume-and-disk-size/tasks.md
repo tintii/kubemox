@@ -15,6 +15,7 @@
 - [x] 3.1 Add `ResizeTemplateDisk`: skip when unset, already a template, or not larger than `scsi0`'s current size; otherwise `ResizeDisk(scsi0, "<n>G")` and wait for the task
 - [x] 3.2 Restructure `handleCloudInitOperations` into the build step: import, resize, cloud-init drive and settings only when `cloudInitConfig` is set, boot order, convert
 - [x] 3.3 Unit test the resize decision (unset, smaller, equal, larger, `M` sizes, parse failure)
+- [x] 3.4 Build steps read the VM fresh (`getFreshVirtualMachine`), not a copy cached before the import; resize errors when `diskSize` is set and `scsi0` is missing. Test against a fake Proxmox API
 
 ## 4. additionalConfig
 

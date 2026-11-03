@@ -53,7 +53,11 @@ reflect what clones get.
 the template build step: import, optional resize, cloud-init drive and config
 only if `cloudInitConfig != nil`, boot order, convert. Each step is already
 idempotent (import skips when `scsi0` is set, convert skips templates); the
-resize step is skipped when the VM is already a template.
+resize step is skipped when the VM is already a template. These checks read
+the VM fresh from Proxmox, not from the client's VM cache: a copy cached
+before the import has no `scsi0`, so the resize was skipped and templates
+stayed at the image's size. Resize with `diskSize` set and no `scsi0` is an
+error rather than a silent skip.
 
 **5. Type switch in `ApplyAdditionalConfiguration`.** `switch r :=
 vm.(type)` on `*VirtualMachine` / `*VirtualMachineTemplate`; unknown types

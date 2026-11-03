@@ -1234,10 +1234,6 @@ func getNextVMID(client *proxmox.Client) (int, error) {
 }
 
 func (pc *ProxmoxClient) getVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error) {
-	node, err := pc.getNode(ctx, nodeName)
-	if err != nil {
-		return nil, err
-	}
 	vmID, err := pc.getVMID(vmName, nodeName)
 	if err != nil {
 		return nil, err
@@ -1245,6 +1241,21 @@ func (pc *ProxmoxClient) getVirtualMachine(vmName, nodeName string) (*proxmox.Vi
 	// Check cache
 	if vm := pc.getCachedVM(nodeName, vmID); vm != nil {
 		return vm, nil
+	}
+	return pc.getFreshVirtualMachine(vmName, nodeName)
+}
+
+// getFreshVirtualMachine reads the VM from Proxmox, bypassing the cache, and
+// refreshes the cached copy. Use it when a decision depends on configuration
+// that an earlier step, such as a disk import, may just have changed.
+func (pc *ProxmoxClient) getFreshVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error) {
+	node, err := pc.getNode(ctx, nodeName)
+	if err != nil {
+		return nil, err
+	}
+	vmID, err := pc.getVMID(vmName, nodeName)
+	if err != nil {
+		return nil, err
 	}
 	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
